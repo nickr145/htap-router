@@ -10,15 +10,22 @@ import java.math.BigDecimal;
 public class AccountController {
 
     private final AccountRepository accountRepository;
+    private final DashboardService dashboardService;
 
-    public AccountController(AccountRepository accountRepository) {
+    public AccountController(AccountRepository accountRepository, DashboardService dashboardService) {
         this.accountRepository = accountRepository;
+        this.dashboardService = dashboardService;
     }
 
     @PostMapping
     public ResponseEntity<String> createAccount(@RequestParam String name, @RequestParam BigDecimal initialBalance) {
         accountRepository.createAccount(name, initialBalance);
         return ResponseEntity.ok("Account created successfully");
+    }
+
+    @GetMapping("/{id}/dashboard")
+    public ResponseEntity<DashboardDTO.DashboardResponse> getDashboard(@PathVariable String id) throws Exception {
+        return ResponseEntity.ok(dashboardService.getDashboardData(id));
     }
     
 }
