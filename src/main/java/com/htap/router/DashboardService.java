@@ -28,7 +28,7 @@ public class DashboardService {
                    .where(DSL.field("id").eq(accountId))
                    .fetchOptional()
                    .map(r -> new DashboardDTO.AccountSummary(r.value1(), r.value2(), r.value3()))
-                   .orElseThrow(() -> new IllegalArgumentException("Account not found: " + accountId))
+                   .orElseThrow(() -> new AccountNotFoundException(accountId))
             );
 
             // Fork Virtual Thread 2: Fetch Recent Transactions

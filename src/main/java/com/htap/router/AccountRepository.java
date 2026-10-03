@@ -17,21 +17,23 @@ public class AccountRepository {
         this.dsl = dsl;
     }
 
-    @Transactional 
-    public void createAccount(String ownerName, BigDecimal initialBalance) {
+    @Transactional
+    public String createAccount(String ownerName, BigDecimal initialBalance) {
         String accountId = UUID.randomUUID().toString();
 
         dsl.insertInto(DSL.table("accounts"))
            .columns(DSL.field("id"), DSL.field("owner_name"), DSL.field("balance"))
            .values(accountId, ownerName, initialBalance)
            .execute();
-        
+
         if (initialBalance.compareTo(BigDecimal.ZERO) > 0) {
             dsl.insertInto(DSL.table("transactions"))
                 .columns(DSL.field("id"), DSL.field("account_id"), DSL.field("amount"), DSL.field("transaction_type"))
                 .values(UUID.randomUUID().toString(), accountId, initialBalance, "DEPOSIT")
                 .execute();
         }
+
+        return accountId;
     }
     
 }

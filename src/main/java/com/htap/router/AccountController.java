@@ -1,11 +1,13 @@
 package com.htap.router;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
-@RestController 
+@RestController
 @RequestMapping("/api/accounts")
 public class AccountController {
 
@@ -18,14 +20,17 @@ public class AccountController {
     }
 
     @PostMapping
-    public ResponseEntity<String> createAccount(@RequestParam String name, @RequestParam BigDecimal initialBalance) {
-        accountRepository.createAccount(name, initialBalance);
-        return ResponseEntity.ok("Account created successfully");
+    public ResponseEntity<Map<String, String>> createAccount(@RequestParam String name, @RequestParam BigDecimal initialBalance) {
+        if (initialBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("initialBalance must not be negative");
+        }
+        String accountId = accountRepository.createAccount(name, initialBalance);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", accountId));
     }
 
     @GetMapping("/{id}/dashboard")
     public ResponseEntity<DashboardDTO.DashboardResponse> getDashboard(@PathVariable String id) throws Exception {
         return ResponseEntity.ok(dashboardService.getDashboardData(id));
     }
-    
+
 }

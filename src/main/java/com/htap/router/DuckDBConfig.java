@@ -19,7 +19,7 @@ public class DuckDBConfig {
         try (Statement stmt = conn.createStatement()) {
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS duck_transactions (
-                    id VARCHAR(36) PRIMARY KEY,
+                    id VARCHAR(36),
                     account_id VARCHAR(36),
                     amount DECIMAL(15, 2),
                     transaction_type VARCHAR(20),
