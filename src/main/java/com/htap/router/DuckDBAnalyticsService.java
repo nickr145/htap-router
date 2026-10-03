@@ -16,13 +16,14 @@ public class DuckDBAnalyticsService {
 
     private final Connection duckConn;
     private final DSLContext postgresDsl;
+    private volatile OffsetDateTime lastSyncedAt = OffsetDateTime.MIN;
 
     public DuckDBAnalyticsService(@Qualifier("duckDbConnection") Connection duckConn, DSLContext postgresDsl) {
         this.duckConn = duckConn;
         this.postgresDsl = postgresDsl;
     }
 
-    // Syncs transactional records from PostgreSQL (OLTP) into DuckDB (OLAP)
+    // Syncs transactional records from PostgreSQL (OLTP) into DuckDB (OLAP), incrementally by created_at watermark
     public synchronized int syncFromPostgres() throws SQLException {
         var records = postgresDsl.select(
             DSL.field("id", String.class),
@@ -32,10 +33,11 @@ public class DuckDBAnalyticsService {
             DSL.field("created_at", OffsetDateTime.class)
         )
         .from(DSL.table("transactions"))
+        .where(DSL.field("created_at", OffsetDateTime.class).gt(lastSyncedAt))
         .fetch();
 
-        try (Statement clearStmt = duckConn.createStatement()) {
-            clearStmt.execute("delete from duck_transactions");
+        if (records.isEmpty()) {
+            return 0;
         }
 
         String insertSql = "insert into duck_transactions (id, account_id, amount, transaction_type, created_at) values (?, ?, ?, ?, ?)";
@@ -50,12 +52,19 @@ public class DuckDBAnalyticsService {
                 pstmt.addBatch();
             }
             int[] res = pstmt.executeBatch();
+
+            for (var r : records) {
+                if (r.value5().isAfter(lastSyncedAt)) {
+                    lastSyncedAt = r.value5();
+                }
+            }
+
             return res.length;
         }
     }
 
     // Executes fast OLAP aggregations on DuckDB
-    public AnalyticsDTO.SystemAnalyticsResponse getSystemAnalytics() throws SQLException {
+    public synchronized AnalyticsDTO.SystemAnalyticsResponse getSystemAnalytics() throws SQLException {
         String overallSql = """
             select 
                 count(*) as total_count, 
