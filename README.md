@@ -124,3 +124,44 @@ curl "http://localhost:8080/api/analytics/summary"
 ```
 
 `HtapRouterApplicationTests#contextLoads` requires the Postgres container to be reachable (via Docker Compose support), same as `bootRun`.
+
+---
+
+## Benchmarks
+
+Measured locally (single machine, Docker-hosted Postgres, no network latency) by comparing the current implementation against earlier commits of this same codebase, seeded with 50k transactions. Scripts live in [`bench/`](bench/README.md) and are not run in CI; numbers below are from direct timing of the real endpoints.
+
+### Sync efficiency
+
+Full table resync (original) vs. incremental watermark + `DuckDBAppender` (current):
+
+| Version | Cold sync (50k new rows) | Repeat sync (0 new rows) |
+|---|---|---|
+| Full resync every call | 8,493ms | 7,194ms |
+| Incremental watermark only | 7,288ms | 47ms |
+| Incremental watermark + Appender (current) | 697ms | **25ms** |
+
+Repeat-sync time dropped **~99.7%** (7,194ms → 25ms) by only loading rows newer than the last synced watermark instead of reloading the full table every call.
+
+### Concurrent reads during a sync
+
+Firing `/api/analytics/summary` reads while a sync is in flight:
+
+| Version | Reads completed during sync window | Min count observed (baseline = 50,000) | Avg / P99 read latency |
+|---|---|---|---|
+| Original (unsynchronized) | 252 | **0** — read landed on a fully-emptied table mid-sync | 15ms / 28ms (fast, but wrong) |
+| `synchronized` read+write | 1 | 100,000 (correct) | 7,026ms / 7,026ms (blocked for the whole sync) |
+| Per-operation duplicated connections (current) | 12 | 50,000 (always correct) | 19ms / 25ms (correct **and** fast) |
+
+The original code could return a transaction count of zero to a concurrent caller mid-sync. Giving the sync and each read their own duplicated DuckDB connection (`DuckDBConnection.duplicate()`, MVCC snapshot isolation) fixed the correctness bug without the throughput cost of serializing all reads behind the sync, which a naive `synchronized` fix would have paid (reads blocked up to the full sync duration, ~7s here).
+
+### Dashboard fan-out (sequential vs. parallel)
+
+`getDashboardData()`'s three queries run sequentially vs. via `StructuredTaskScope` fan-out, 30 calls against a local Postgres instance:
+
+| Version | Avg | P50 | P99 |
+|---|---|---|---|
+| Sequential | 31ms | 31ms | 33ms |
+| Parallel (`StructuredTaskScope`) | 33ms | 30ms | 48ms |
+
+On localhost, per-query latency is already sub-millisecond-to-low-single-digit, so fanning out across three virtual threads (each taking its own Hikari connection) adds scheduling/connection-pool overhead that isn't recovered — p50 is a wash and p99 is worse under fan-out. This pattern is expected to pay off once per-query latency is large enough (a remote database, a slower query) to outweigh the fan-out overhead; it does not on this local setup.
