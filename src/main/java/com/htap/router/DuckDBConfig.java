@@ -18,12 +18,12 @@ public class DuckDBConfig {
 
         try (Statement stmt = conn.createStatement()) {
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS duck_transactions (
-                    id VARCHAR(36) PRIMARY KEY,
-                    account_id VARCHAR(36),
-                    amount DECIMAL(15, 2),
-                    transaction_type VARCHAR(20),
-                    created_at TIMESTAMP
+                create table if not exists duck_transactions (
+                    id varchar(36),
+                    account_id varchar(36),
+                    amount decimal(15, 2),
+                    transaction_type varchar(20),
+                    created_at timestamp
                 );
             """);
         }

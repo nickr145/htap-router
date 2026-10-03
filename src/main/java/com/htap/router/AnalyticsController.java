@@ -20,6 +20,12 @@ public class AnalyticsController {
     @PostMapping("/sync")
     public ResponseEntity<Map<String, Object>> syncPostgresToDuckDB() throws Exception {
         int syncedCount = duckDbAnalyticsService.syncFromPostgres();
+        if (syncedCount < 0) {
+            return ResponseEntity.status(409).body(Map.of(
+                "status", "ALREADY_RUNNING",
+                "engine", "DuckDB"
+            ));
+        }
         return ResponseEntity.ok(Map.of(
             "status", "SUCCESS",
             "recordsSynced", syncedCount,
