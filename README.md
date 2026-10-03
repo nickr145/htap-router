@@ -125,6 +125,23 @@ curl "http://localhost:8080/api/analytics/summary"
 
 `HtapRouterApplicationTests#contextLoads` requires the Postgres container to be reachable (via Docker Compose support), same as `bootRun`.
 
+### Running the Benchmarks
+
+The numbers in the [Benchmarks](#benchmarks) section below are reproducible via the scripts in [`bench/`](bench/README.md). Each script builds and starts its own instance of the app (port `8089`, to avoid colliding with anything already on `8080`), spins up its own Postgres via Docker Compose, seeds data, runs the timing, and tears itself down — no manually running `bootRun` first.
+
+```bash
+# Sync efficiency: cold full/incremental load vs. a repeat sync with no new rows
+./bench/bench_sync.sh . CURRENT
+
+# Concurrent reads during an in-flight sync: correctness + read latency
+./bench/bench_concurrent.sh . CURRENT
+
+# Dashboard fan-out latency (parallel, as committed)
+./bench/bench_dashboard.sh . PARALLEL
+```
+
+Results land in `bench/out/` (gitignored) and append to `bench/out/results.txt`. To reproduce the historical (pre-fix) comparisons or the sequential-dashboard comparison, see [`bench/README.md`](bench/README.md) — it documents the exact commits used and the patch for the sequential variant.
+
 ---
 
 ## Benchmarks
