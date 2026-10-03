@@ -1,0 +1,87 @@
+diff --git a/src/main/java/com/htap/router/DashboardService.java b/src/main/java/com/htap/router/DashboardService.java
+index 5a3720f..2fc6a58 100644
+--- a/src/main/java/com/htap/router/DashboardService.java
++++ b/src/main/java/com/htap/router/DashboardService.java
+@@ -7,9 +7,8 @@ import org.springframework.stereotype.Service;
+ import java.math.BigDecimal;
+ import java.time.OffsetDateTime;
+ import java.util.List;
+-import java.util.concurrent.StructuredTaskScope;
+ 
+-@Service 
++@Service
+ public class DashboardService {
+ 
+     private final DSLContext dsl;
+@@ -18,46 +17,31 @@ public class DashboardService {
+         this.dsl = dsl;
+     }
+ 
+-    @SuppressWarnings("preview")
++    // BENCHMARK-ONLY sequential variant (not for merge) — same three queries, run one after another
+     public DashboardDTO.DashboardResponse getDashboardData(String accountId) throws Exception {
+-        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+-            // Fork Virtual Thread 1: Fetch Account
+-            StructuredTaskScope.Subtask<DashboardDTO.AccountSummary> accountTask = scope.fork(() ->
+-                dsl.select(DSL.field("id", String.class), DSL.field("owner_name", String.class), DSL.field("balance", BigDecimal.class))
+-                   .from(DSL.table("accounts"))
+-                   .where(DSL.field("id").eq(accountId))
+-                   .fetchOptional()
+-                   .map(r -> new DashboardDTO.AccountSummary(r.value1(), r.value2(), r.value3()))
+-                   .orElseThrow(() -> new AccountNotFoundException(accountId))
+-            );
+-
+-            // Fork Virtual Thread 2: Fetch Recent Transactions
+-            StructuredTaskScope.Subtask<List<DashboardDTO.TransactionRecord>> transactionsTask = scope.fork(() ->
+-                dsl.select(DSL.field("id", String.class), DSL.field("amount", BigDecimal.class), DSL.field("transaction_type", String.class), DSL.field("created_at", OffsetDateTime.class))
+-                   .from(DSL.table("transactions"))
+-                   .where(DSL.field("account_id").eq(accountId))
+-                   .orderBy(DSL.field("created_at").desc())
+-                   .limit(10)
+-                   .fetch()
+-                   .map(r -> new DashboardDTO.TransactionRecord(r.value1(), r.value2(), r.value3(), r.value4()))
+-            );
+-
+-            // Fork Virtual Thread 3: Compute Summary Metrics
+-            StructuredTaskScope.Subtask<DashboardDTO.Metrics> metricsTask = scope.fork(() -> {
+-                int count = dsl.fetchCount(DSL.table("transactions"), DSL.field("account_id").eq(accountId));
+-                BigDecimal sum = dsl.select(DSL.sum(DSL.field("amount", BigDecimal.class)))
+-                                    .from(DSL.table("transactions"))
+-                                    .where(DSL.field("account_id").eq(accountId))
+-                                    .fetchOneInto(BigDecimal.class);
+-                return new DashboardDTO.Metrics(count, sum != null ? sum : BigDecimal.ZERO);
+-            });
+-
+-            // Join all virtual threads concurrently
+-            scope.join();
+-            scope.throwIfFailed();
+-
+-            return new DashboardDTO.DashboardResponse(accountTask.get(), transactionsTask.get(), metricsTask.get());
+-        }
++        DashboardDTO.AccountSummary account = dsl.select(DSL.field("id", String.class), DSL.field("owner_name", String.class), DSL.field("balance", BigDecimal.class))
++            .from(DSL.table("accounts"))
++            .where(DSL.field("id").eq(accountId))
++            .fetchOptional()
++            .map(r -> new DashboardDTO.AccountSummary(r.value1(), r.value2(), r.value3()))
++            .orElseThrow(() -> new AccountNotFoundException(accountId));
++
++        List<DashboardDTO.TransactionRecord> transactions = dsl.select(DSL.field("id", String.class), DSL.field("amount", BigDecimal.class), DSL.field("transaction_type", String.class), DSL.field("created_at", OffsetDateTime.class))
++            .from(DSL.table("transactions"))
++            .where(DSL.field("account_id").eq(accountId))
++            .orderBy(DSL.field("created_at").desc())
++            .limit(10)
++            .fetch()
++            .map(r -> new DashboardDTO.TransactionRecord(r.value1(), r.value2(), r.value3(), r.value4()));
++
++        int count = dsl.fetchCount(DSL.table("transactions"), DSL.field("account_id").eq(accountId));
++        BigDecimal sum = dsl.select(DSL.sum(DSL.field("amount", BigDecimal.class)))
++                            .from(DSL.table("transactions"))
++                            .where(DSL.field("account_id").eq(accountId))
++                            .fetchOneInto(BigDecimal.class);
++        DashboardDTO.Metrics metrics = new DashboardDTO.Metrics(count, sum != null ? sum : BigDecimal.ZERO);
++
++        return new DashboardDTO.DashboardResponse(account, transactions, metrics);
+     }
+-    
++
+ }
